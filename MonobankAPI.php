@@ -1,5 +1,11 @@
 <?php
 
+require "timeInterval.php";
+require "Request.php";
+require "objects/Transaction.php";
+require "objects/MonobankClient.php";
+require "objects/Account.php";
+
 class MonobankAPI
 {
     private $token;
@@ -14,7 +20,7 @@ class MonobankAPI
     /**
      * Gets user information from the Monobank API.
      *
-     * Returns an array containing the following information about the user:
+     * Returns an array of objects containing the following information about the user:
      *
      * * Client ID
      * * Name
@@ -34,55 +40,52 @@ class MonobankAPI
      * * Type
      * * IBAN
      *
-     * @return array
+     * @return MonobankClient
      */
-    public function requestUserInfo(): array
+    public function requestClientInfo(): MonobankClient|string
     {
-        $addedUrl = "/personal/client-info";
-        $url = $this->monobankURL . $addedUrl;
+        $url = $this->monobankURL . "/personal/client-info";
         $headers[] = "X-Token: $this->token";
-        $state_ch = curl_init();
-        curl_setopt($state_ch, CURLOPT_URL, $url);
-        curl_setopt($state_ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($state_ch, CURLOPT_HTTPHEADER, $headers);
-        $state_result = curl_exec($state_ch);
-        $err = curl_error($state_ch);
-        if ($err) {
-            echo "cURL Error #:" . $err;
-            exit;
-        }
-        $state_result = json_decode($state_result, true);
-        return $state_result;
-    }
+        $request = new Request($url, $headers);
 
-    private function validateDateTimeRange (DateTime $from, DateTime $to = null): array
-    {
-        $from = $from->format('Y-m-d H:i:s');
-        if ($to) {
-            $to = $to->format('Y-m-d H:i:s');
-        }
+        $requestResult = $request->sendRequest();
+        if (array_key_exists("errorDescription", $requestResult)) {
+            return "Too many requests";
+        } else {
+            $client = new MonobankClient();
+            $client->clientId = $requestResult["clientId"]?? null;
+            $client->name = $requestResult["name"];
+            $client->webHookUrl = $requestResult["webHookUrl"];
+            $client->permissions = $requestResult["permissions"];
 
-        if (strtotime($from) < strtotime('-31 days -1 hour')) {
-            return ['error' => 'The maximum time for which you can get a statement is 31 days and 1 hour'];
-        }
-        if ($from && $to) {
-            if (strtotime($from) > strtotime($to)) {
-                return ['error' => 'The end date must be greater than the start date'];
+            $clientAccounts = [];
+            foreach ($requestResult["accounts"] as $key) {
+                $account = new Account();
+                $account->id = $key['id'] ?? null;
+                $account->sendId = $key['sendId'] ?? null;
+                $account->currencyCode = $key['currencyCode'] ?? null;
+                $account->cashbackType = $key['cashbackType'] ?? null;
+                $account->balance = $key['balance'] ?? null;
+                $account->creditLimit = $key['creditLimit'] ?? null;
+                $account->maskedPan = $key['maskedPan'] ?? [];
+                $account->type = $key['type'] ?? null;
+                $account->iban = $key['iban'] ?? null;
+
+                $clientAccounts[] = $account;
             }
-        }
-        if (!$to) {
-            $to = date("Y-m-d H:i:s");
-        }
+            $client->accounts = $clientAccounts;
+            $client->jars = $requestResult["jars"] ?? null;
 
-        $from_unix = strtotime($from);
-        $to_unix = strtotime($to);
-        return [$from_unix, $to_unix];
+            return $client;
+        }
     }
+
+
 
     /**
      * Gets account transaction information from the Monobank API.
      *
-     * Returns an array containing the following information about each transaction:
+     * Returns an array of objects containing the following information about each transaction:
      * By default, the date up to which the transaction report is selected will use the current date and time.
      *
      * * ID
@@ -98,7 +101,7 @@ class MonobankAPI
      * * Balance
      * * Hold
      * * Receipt ID
-     * * Counter name (if applicable)
+     * * Counter name
      *
      * @param string $accountId The ID of the account to get transactions for.
      * @param DateTime $from The start date of the transaction range.
@@ -109,30 +112,50 @@ class MonobankAPI
     {
 
         if ($to === null){
-            $dateRange = $this->validateDateTimeRange($from);
+            $dateRange = getTimeInterval($from);
         } else {
-            $dateRange = $this->validateDateTimeRange($from, $to);
+            $dateRange = getTimeInterval($from, $to);
         }
 
         if (array_key_exists('error', $dateRange)){
             return $dateRange['error'];
         }
 
-        $addedUrl = "/personal/statement/{$accountId}/{$dateRange[0]}/{$dateRange[1]}";
-        $url = $this->monobankURL . $addedUrl;
+        $url = $this->monobankURL . "/personal/statement/{$accountId}/{$dateRange[0]}/{$dateRange[1]}";
         $headers[] = "X-Token: $this->token";
-        $state_ch = curl_init();
-        curl_setopt($state_ch, CURLOPT_URL,$url);
-        curl_setopt($state_ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($state_ch, CURLOPT_HTTPHEADER, $headers);
-        $state_result = curl_exec ($state_ch);
-        $err = curl_error($state_ch);
+        $request = new Request($url, $headers);
 
-        if ($err) {
-            return "CURL Error #:" . $err;
+        $requestResult= $request->sendRequest();
+
+        if (array_key_exists("errorDescription", $requestResult)) {
+            return "Too many requests";
+        } else {
+            $transactionArray = [];
+            foreach ($requestResult as $transaction) {
+                $transactionObject = new Transaction();
+                $transactionObject->id = $transaction['id'] ?? null;
+                $transactionObject->time = $transaction['time'] ?? null;
+                $transactionObject->description = $transaction['description'] ?? null;
+                $transactionObject->mcc = $transaction['mcc'] ?? null;
+                $transactionObject->originalMcc = $transaction['originalMcc'] ?? null;
+                $transactionObject->hold = $transaction['hold'] ?? null;
+                $transactionObject->amount = $transaction['amount'] ?? null;
+                $transactionObject->operationAmount = $transaction['operationAmount'] ?? null;
+                $transactionObject->currencyCode = $transaction['currencyCode'] ?? null;
+                $transactionObject->commissionRate = $transaction['commissionRate'] ?? null;
+                $transactionObject->cashbackAmount = $transaction['cashbackAmount'] ?? null;
+                $transactionObject->balance = $transaction['balance'] ?? null;
+                $transactionObject->comment = $transaction['comment'] ?? null;
+                $transactionObject->receiptId = $transaction['receiptId'] ?? null;
+                $transactionObject->invoiceId = $transaction['invoiceId'] ?? null;
+                $transactionObject->counterEdrpou = $transaction['counterEdrpou'] ?? null;
+                $transactionObject->counterIban = $transaction['counterIban'] ?? null;
+                $transactionObject->counterName = $transaction['counterName'] ?? null;
+
+                $transactionArray[] = $transactionObject;
+            }
+            return $transactionArray;
         }
-        $state_result = json_decode($state_result, true);
-        return $state_result;
     }
 
     /**
@@ -151,7 +174,6 @@ class MonobankAPI
         $result = array();
 
         foreach ($selectedAccounts as $account) {
-            var_dump($account);
             $result[] = $this->requestAccountTransactionsInfo($account, $from, $to);
 ;
         }

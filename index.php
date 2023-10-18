@@ -1,23 +1,23 @@
 <?php
 require 'MonobankAPI.php';
 
-$token = "uWn6-n4y7oPAH64J1U9FYx6Xa5NP1dPM51hr_Gr-Q92Q";
+$token = "utLXGjhCqnQzHtLuuP3LGmZ8WR3IwpS6CY_qsom_SoVc";
 
 $request = new MonobankAPI($token);
-$result = $request->requestUserInfo();
+$result = $request->requestClientInfo();
 echo '<pre>';
 print_r($result);
 echo '</pre>';
 
-$date1 = new DateTime('2023-10-13 10:30:00');
-$date2 = new DateTime('2023-09-15 15:45:00');
-////
-//$result = $request->requestAccountTransactionsInfo("Nn20ubBpWJdS8RXVMdL7fA",$date2);
+$date1 = new DateTime('2023-07-13 10:30:00');
+$date2 = new DateTime('2023-08-10 15:45:00');
+
+//$result = $request->requestAccountTransactionsInfo("YFG_x1xqcAv727NnBIQMBg",$date1, $date2);
 //echo '<pre>';
 //print_r($result);
 //echo '</pre>';
 
-$result = $request->requestSelectedAccountsTransactionsInfo(["yovrndj0J3wkAuLM4CnoHw", "YFG_x1xqcAv727NnBIQMBg"],$date2);
+$result = $request->requestSelectedAccountsTransactionsInfo(["yovrndj0J3wkAuLM4CnoHw", "YFG_x1xqcAv727NnBIQMBg"],$date1, $date2);
 echo '<pre>';
 print_r($result);
 echo '</pre>';
